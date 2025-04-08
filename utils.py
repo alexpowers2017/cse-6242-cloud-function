@@ -23,6 +23,27 @@ def calculate_crowd_scores(month: int, crowdPreference: int):
   """ Given a month as a number 1-12 and a crowdPreference value 0 or 1, look up the park-specific crowd index for each park for the given month. """
   pass
 
+def get_traffic_score(month, crowd_preference):
+    """
+    Get the crowd density score using the user's input and a lookup csv file in cloud storage.
+    
+    :param month: number 1-12 representing the month the trip is happening
+    :param crowd_preference: 0/1 flag representing whether the user wants to go at busy times.
+        0 - 'I want to avoid crowds.'
+        1 - 'I want to go at the most popular times.'
+    :return: Pandas dataframe with the crowd density scores for each park, according to the user's preference.
+        'Code' - 4-letter park code
+        'CrowdDensityScore' - a score between 0 and 1 showing how closely the park aligns with the user's preferences
+        in the month they've chosen to travel.
+    """
+    all_traffic_indices = pd.read_csv('gs://national-park-reviews-cse-6242/traffic_indices.csv')
+    matching_months = all_traffic_indices[all_traffic_indices['month'] ==  int(month)].copy()
+    if int(crowd_preference) == 1:
+        matching_months['CrowdDensityScore'] = matching_months['traffic_index']
+    else:
+        matching_months['CrowdDensityScore'] = 1 - matching_months['traffic_index']
+    return matching_months[['Code', 'CrowdDensityScore']]
+
 def load_and_assign_google_weights(csv_path):
     """
     Add 'GoogleWeight' column to the DataFrame based on the quartile of GoogleReviewCount.
