@@ -12,7 +12,7 @@ def get_google_review_blobs(storage_client) -> list:
     return [blob for blob in get_all_blobs(storage_client) if 'national-park-reviews' in blob.name and 'csv' in blob.name]
 
 def read_google_review_file(blob) -> tuple:
-    """ Takes a blob and returns a tuple with a 4-letter park code and a list of strings, with each element is one
+    """ Takes a blob and returns a tuple with a 4-letter park code and a list of strings, with each element as one
     non-empty text review. """
     park_code = blob.name.split('/')[1].replace('.csv', '')
     df = pd.read_csv(f'gs://{blob.bucket.name}/{blob.name}')
