@@ -1,2 +1,4 @@
 flask
 functions-framework==3.*
+google-cloud-storage
+pandas
