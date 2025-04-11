@@ -96,7 +96,7 @@ def calculate_weighted_score(wikipedia_df: pd.DataFrame, reviews_df: pd.DataFram
     Parameters:
     - wikipedia_df (pd.DataFrame): DataFrame with columns ['Code', 'Name', 'Similarity']
     - reviews_df (pd.DataFrame): DataFrame with columns ['Code', 'Name', 'Similarity']
-    - crowd_df (pd.DataFrame): DataFrame with columns ['Code', 'CrowdScore']
+    - crowd_df (pd.DataFrame): DataFrame with columns ['Code', 'CrowdDensityScore']
     - counts_df (pd.DataFrame): DataFrame with columns ['Code', 'GoogleReviewCount', 'GoogleWeight']
 
     Returns:
@@ -113,7 +113,7 @@ def calculate_weighted_score(wikipedia_df: pd.DataFrame, reviews_df: pd.DataFram
     merged_df = (
         wikipedia_df
         .merge(reviews_df[['Code', 'ReviewScore']], on='Code', how='left')
-        .merge(crowd_df[['Code', 'CrowdScore']], on='Code', how='left')
+        .merge(crowd_df[['Code', 'CrowdDensityScore']], on='Code', how='left')
         .merge(counts_df[['Code', 'GoogleWeight']], on='Code', how='left')
     )
 
@@ -122,7 +122,7 @@ def calculate_weighted_score(wikipedia_df: pd.DataFrame, reviews_df: pd.DataFram
         # Extract the individual scores
         review_score = row['ReviewScore']
         wiki_score = row['WikiScore']
-        crowd_score = row['CrowdScore']
+        crowd_score = row['CrowdDensityScore']
         review_weight = row['GoogleWeight']
 
         # Calculate weights for each score type based on GoogleWeight
