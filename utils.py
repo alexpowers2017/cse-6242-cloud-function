@@ -94,27 +94,27 @@ def calculate_weighted_score(wikipedia_df: pd.DataFrame, reviews_df: pd.DataFram
     Calculate a weighted average score for a national park based on review scores, Wikipedia presence, and crowd density.
 
     Parameters:
-    - wikipedia_df (pd.DataFrame): DataFrame with columns ['Park Name', 'Similarity Score', 'Park Code']
-    - reviews_df (pd.DataFrame): DataFrame with columns ['Park Name', 'Similarity Score', 'Park Code']
-    - crowd_df (pd.DataFrame): DataFrame with columns ['Park Code', 'CrowdScore']
-    - counts_df (pd.DataFrame): DataFrame with columns ['Park Code', 'CrowdDensityScore', 'GoogleWeight']
+    - wikipedia_df (pd.DataFrame): DataFrame with columns ['Code', 'Name', 'Similarity']
+    - reviews_df (pd.DataFrame): DataFrame with columns ['Code', 'Name', 'Similarity']
+    - crowd_df (pd.DataFrame): DataFrame with columns ['Code', 'CrowdScore']
+    - counts_df (pd.DataFrame): DataFrame with columns ['Code', 'GoogleReviewCount', 'GoogleWeight']
 
     Returns:
     - pd.DataFrame: A DataFrame with columns ['Park Code', 'WeightedScore'] for each park.
     """
 
     #### Code to clean up dfs from score output and crowd output #######
-    # Rename columns for standardization (if necessary) before merging
-    wikipedia_df = wikipedia_df.rename(columns={'Similarity Score': 'WikiScore', 'Park Code': 'Code'})
-    reviews_df = reviews_df.rename(columns={'Similarity Score': 'ReviewScore', 'Park Code': 'Code'})
-    crowd_df = crowd_df.rename(columns={'CrowdScore': 'CrowdScore', 'Park Code': 'Code'})
+    # Rename columns before merging
+    wikipedia_df = wikipedia_df.rename(columns={'Similarity': 'WikiScore'})
+    reviews_df = reviews_df.rename(columns={'Similarity': 'ReviewScore'})
+    counts_df = counts_df.rename(columns={'Park Code': 'Code'})  # So it aligns with others
 
-    # Merge all data sources on 'Code' (Park Code)
+    # Merge all data sources on 'Code'
     merged_df = (
         wikipedia_df
-        .merge(reviews_df, on='Code', how='left')
-        .merge(crowd_df, on='Code', how='left')
-        .merge(counts_df, on='Code', how='left')
+        .merge(reviews_df[['Code', 'ReviewScore']], on='Code', how='left')
+        .merge(crowd_df[['Code', 'CrowdScore']], on='Code', how='left')
+        .merge(counts_df[['Code', 'GoogleWeight']], on='Code', how='left')
     )
 
     # Function to calculate weighted score per park
