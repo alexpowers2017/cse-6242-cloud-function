@@ -52,7 +52,7 @@ if __name__ == '__main__':
 
     # Set this environment variable to the path to your service account credentials file. This is how you authenticate
     # with GCP and get access to our storage bucket.
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="C:\\path\\to\\credentials\\file\\np-gcp-sa.json"
+    #os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="C:\\path\\to\\credentials\\file\\np-gcp-sa.json"
     client = Client()
 
     google_reviews = read_all_google_reviews(client, limit=5)

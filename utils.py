@@ -1,27 +1,68 @@
 # Imports
+from typing import Union
+
 import pandas as pd
 from geopy.distance import geodesic # Required for def calculate_distance_to_parks()
+from google.cloud.storage import Client
+
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', None)
 
 # In this file, we can write individual python functions to be used in the main file
 
 # I sketched out a few of the functions that I think would be necessary and what I think the inputs and outputs would look like.
-# This is can all be changed and adjusted according to everyone's thoughts
+# This can all be changed and adjusted according to everyone's thoughts
 
-def recommend_parks(prompt: str, month: int, crowdPreference: int):
-  """ The main function that takes in the user's input and returns a dataframe, sorted from highest to lowest recommendation score. """
-  pass
+def recommend_parks(prompt: str, month: int, crowd_preference: Union[int,str], city: str, limit: int):
+    """ The main function that takes in the user's input and returns a dataframe, sorted from highest to lowest recommendation score. """
+    # Make sure we're authenticated with Google cloud storage
+    client = Client()
+
+    wikipedia_df = calculate_prompt_wikipedia_similarity_scores('test')
+    reviews_df = calculate_prompt_review_similarity_scores('test')
+    crowd_df = get_traffic_score(month=month, crowd_preference=crowd_preference)
+    counts_df = load_and_assign_google_weights()
+    ignore_crowd = crowd_preference == 'null'
+
+    weighted_score = calculate_weighted_score(
+        wikipedia_df=wikipedia_df,
+        reviews_df=reviews_df,
+        crowd_df=crowd_df,
+        counts_df=counts_df,
+        ignore_crowd=ignore_crowd
+    )
+
+    distance_df = calculate_distance_to_parks(city)
+    full_df = weighted_score.merge(distance_df, on='Code', how='left')
+    full_df.drop('GoogleWeight', axis=1, inplace=True)
+    full_df_sorted = full_df.sort_values(by='WeightedScore', ascending=False)
+    full_df_top_n = full_df_sorted.head(limit).copy()
+    full_df_top_n.rename(columns={
+        'Code': 'code',
+        'WikiScore': 'wikipediaScore',
+        'ReviewScore': 'reviewScore',
+        'CrowdDensityScore': 'crowdScore',
+        'WeightedScore': 'score',
+        'Distance_miles': 'distanceMiles'
+    }, inplace=True)
+    #return full_df_top_n
+    return full_df_top_n.to_dict(orient='records')
+
 
 def calculate_prompt_review_similarity_scores(prompt: str):
-  """ Given a prompt, calculate the prompt's similarity to the google reviews and return the score for each park as a dataframe. """
-  pass
+    """ Given a prompt, calculate the prompt's similarity to the google reviews and return the score for each park as a dataframe. """
+    # Temporary dummy data to get the higher-level functions working
+    df = pd.read_csv("gs://national-park-reviews-cse-6242/parks_03132025.csv")[['Park Code']].rename(columns={'Park Code': 'Code'})
+    df['ReviewScore'] = 0.7
+    return df
 
 def calculate_prompt_wikipedia_similarity_scores(prompt: str):
-  """ Given a prompt, calculate the prompt's similarity to the Wikipedia pages and return the score for each park as a dataframe. """
-  pass
+    """ Given a prompt, calculate the prompt's similarity to the Wikipedia pages and return the score for each park as a dataframe. """
+    # Temporary dummy data to get the higher-level functions working
+    df = pd.read_csv("gs://national-park-reviews-cse-6242/parks_03132025.csv")[['Park Code']].rename(columns={'Park Code': 'Code'})
+    df['WikiScore'] = 0.7
+    return df
 
-def calculate_crowd_scores(month: int, crowdPreference: int):
-  """ Given a month as a number 1-12 and a crowdPreference value 0 or 1, look up the park-specific crowd index for each park for the given month. """
-  pass
 
 def get_traffic_score(month, crowd_preference):
     """
@@ -38,13 +79,18 @@ def get_traffic_score(month, crowd_preference):
     """
     all_traffic_indices = pd.read_csv('gs://national-park-reviews-cse-6242/traffic_indices.csv')
     matching_months = all_traffic_indices[all_traffic_indices['month'] ==  int(month)].copy()
-    if int(crowd_preference) == 1:
+    try:
+        crowd_preference_int = int(crowd_preference)
+        if crowd_preference_int == 0:
+            matching_months['CrowdDensityScore'] = 1 - matching_months['traffic_index']
+        else:
+            matching_months['CrowdDensityScore'] = matching_months['traffic_index']
+    except:
         matching_months['CrowdDensityScore'] = matching_months['traffic_index']
-    else:
-        matching_months['CrowdDensityScore'] = 1 - matching_months['traffic_index']
+
     return matching_months[['Code', 'CrowdDensityScore']]
 
-def load_and_assign_google_weights(csv_path):
+def load_and_assign_google_weights():
     """
     Add 'GoogleWeight' column to the DataFrame based on the quartile of GoogleReviewCount.
 
@@ -56,14 +102,11 @@ def load_and_assign_google_weights(csv_path):
 
     0.2 is left over for default crowd density weight
 
-    Parameters:
-    - csv_path (str): Path to CSV file with 'Code' and 'GoogleReviewCount' columns.
-
     Returns:
     - pd.DataFrame: Original DataFrame with an added 'GoogleWeight' column.
     """
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv('gs://national-park-reviews-cse-6242/parkcode_googreviewcount.csv')
 
     # Remove commas and convert to int
     df['GoogleReviewCount'] = df['GoogleReviewCount'].str.replace(',', '', regex=False).astype(int)
@@ -89,7 +132,7 @@ def load_and_assign_google_weights(csv_path):
 
     return df
 
-def calculate_weighted_score(wikipedia_df: pd.DataFrame, reviews_df: pd.DataFrame, crowd_df: pd.DataFrame, counts_df: pd.DataFrame) -> pd.DataFrame:
+def calculate_weighted_score(wikipedia_df: pd.DataFrame, reviews_df: pd.DataFrame, crowd_df: pd.DataFrame, counts_df: pd.DataFrame, ignore_crowd: bool) -> pd.DataFrame:
     """
     Calculate a weighted average score for a national park based on review scores, Wikipedia presence, and crowd density.
 
@@ -127,7 +170,7 @@ def calculate_weighted_score(wikipedia_df: pd.DataFrame, reviews_df: pd.DataFram
 
         # Calculate weights for each score type based on GoogleWeight
         wiki_weight = 0.8 - review_weight
-        crowd_weight = 0.2
+        crowd_weight = 0.2 if not ignore_crowd else 0
 
         # Normalize weights so they sum to 1 (they are proportional)
         total_weight = review_weight + wiki_weight + crowd_weight
@@ -141,22 +184,20 @@ def calculate_weighted_score(wikipedia_df: pd.DataFrame, reviews_df: pd.DataFram
             wiki_score * wiki_weight +
             crowd_score * crowd_weight
         )
-        return round(weighted_score, 2)
+        return round(weighted_score, 3)
 
     # Apply the score calculation to each row in the merged DataFrame
     merged_df['WeightedScore'] = merged_df.apply(calc_score, axis=1)
 
+    return merged_df
     # Return only the 'Code' and 'WeightedScore' columns in the result
-    return merged_df[['Code', 'WeightedScore']]
+    #return merged_df[['Code', 'WeightedScore']]
 
-def calculate_distance_to_parks(city_name: str, cities_df, parks_df): # Switch if inputs for cities_df, parks_df do not exist
+def calculate_distance_to_parks(city_name: str): # Switch if inputs for cities_df, parks_df do not exist
   """
-  Takes city_name, cities_df, and parks_df and calculates distance in miles to all parks (62 - Kings and Sequoia National Park both under 'seki' park code, so distance will be the same).
+  Takes city_name and calculates distance in miles to all parks (62 - Kings and Sequoia National Park both under 'seki' park code, so distance will be the same).
   Returns dataframe 62 x 3 columns - Park Name, Park Code, Distance_miles
-  Code assumes no inputs for parks_df, cities_df. Code will load csv files from a local file path.
-
-  cities_df = Dataframe with city names, latitude, longitude, and 'City_Country' (for further differentiation)
-  parks_df = Dataframe with park name, park code, latitude, longitude data
+  Code assumes no inputs for parks_df, cities_df. Code will load csv files from Google cloud storage.
   
   Parameters:
     city_name: The city name as defined in the worldcities_data (to be selected from dropdown in user input).
@@ -165,8 +206,8 @@ def calculate_distance_to_parks(city_name: str, cities_df, parks_df): # Switch i
     distances_df: Dataframe of shape 62 x 3 (columns = Park Name, Park Code, Distance_miles), sorted by ascending order.
   """
   # # Include if assuming csv not loaded globally
-  # cities_df = pd.read_csv("../worldcities_data.csv") # Change CSV file path as required
-  # parks_df = pd.read_csv("../parks_03132025.csv") # Change CSV file path as required
+  cities_df = pd.read_csv("gs://national-park-reviews-cse-6242/worldcities_data.csv") # Change CSV file path as required
+  parks_df = pd.read_csv("gs://national-park-reviews-cse-6242/parks_03132025.csv") # Change CSV file path as required
 
   # Ensure city_name is in cities_csv or cities_df
   try:
@@ -182,7 +223,7 @@ def calculate_distance_to_parks(city_name: str, cities_df, parks_df): # Switch i
   for _, row in parks_df.iterrows():
       park_lat, park_lon = row['Latitude'], row['Longitude']
       distance_miles = geodesic((city_lat, city_lon), (park_lat, park_lon)).miles
-      distances.append({'Park Name': row['Park Name'], 'Park Code': row['Park Code'], 'Distance_miles': round(distance_miles, 2)})
+      distances.append({'Code': row['Park Code'], 'Distance_miles': round(distance_miles, 2)})
 
   # Convert list of distances to DataFrame
   distances_df = pd.DataFrame(distances)
@@ -191,7 +232,7 @@ def calculate_distance_to_parks(city_name: str, cities_df, parks_df): # Switch i
   distances_df = distances_df.sort_values(by='Distance_miles', ascending=True)
 
   # Return dataframe
-  return distances_df # returns dataframe of shape 62 x 3 (columns = Park Name, Park Code, Distance_miles). 62 total rows (not 63) as in NPS data Kings and Sequoia National Park are consider one and labeled as 'seki' Park Code.
+  return distances_df # returns dataframe of shape 62 x 2 (columns = Code, Distance_miles). 62 total rows (not 63) as in NPS data Kings and Sequoia National Park are consider one and labeled as 'seki' Park Code.
 
 def get_proximities(park_code: str):
   """
@@ -204,7 +245,7 @@ def get_proximities(park_code: str):
     proximities: Dataframe containing distances (in miles) of parks from selected park, sorted by ascending order, excluding selected park. Shape 61,2 (columns = Park Code and selected park_code) (if select park removed). 
   """
   # Uncomment if park_proximities not loaded globally
-  # park_proximities = pd.read_csv('./park_proximities_miles.csv')
+  park_proximities = pd.read_csv('gs://national-park-reviews-cse-6242/park_proximities_miles.csv')
 
   # Ensure park_code is in list of parks, if not return error statement
   if park_code not in list(park_proximities['Park Code']):
@@ -217,4 +258,9 @@ def get_proximities(park_code: str):
   final_df = sorted_distances.drop(0, axis=0)
   
   return final_df # Returns dataframe of shape 61,2
+
+if __name__ == '__main__':
+    client = Client()
+    recommendations = recommend_parks('Test', 7, 1, 'Houston, Texas - United States', 10)
+    print(recommendations)
 
