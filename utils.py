@@ -1,25 +1,24 @@
 # Imports
 from typing import Union
-
 import pandas as pd
 from geopy.distance import geodesic # Required for def calculate_distance_to_parks()
 from google.cloud.storage import Client
+from read_cloud_files import read_all_google_reviews, read_all_wiki_pages
+from cosine_similarity import compute_query_similarity
+
 
 pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', 70)
 pd.set_option('display.width', None)
 
-# In this file, we can write individual python functions to be used in the main file
-
-# I sketched out a few of the functions that I think would be necessary and what I think the inputs and outputs would look like.
-# This can all be changed and adjusted according to everyone's thoughts
 
 def recommend_parks(prompt: str, month: int, crowd_preference: Union[int,str], city: str, limit: int):
     """ The main function that takes in the user's input and returns a dataframe, sorted from highest to lowest recommendation score. """
     # Make sure we're authenticated with Google cloud storage
     client = Client()
 
-    wikipedia_df = calculate_prompt_wikipedia_similarity_scores('test')
-    reviews_df = calculate_prompt_review_similarity_scores('test')
+    wikipedia_df = calculate_prompt_wikipedia_similarity_scores('test', client)
+    reviews_df = calculate_prompt_review_similarity_scores('test', client)
     crowd_df = get_traffic_score(month=month, crowd_preference=crowd_preference)
     counts_df = load_and_assign_google_weights()
     ignore_crowd = crowd_preference == 'null'
@@ -49,19 +48,16 @@ def recommend_parks(prompt: str, month: int, crowd_preference: Union[int,str], c
     return full_df_top_n.to_dict(orient='records')
 
 
-def calculate_prompt_review_similarity_scores(prompt: str):
-    """ Given a prompt, calculate the prompt's similarity to the google reviews and return the score for each park as a dataframe. """
-    # Temporary dummy data to get the higher-level functions working
-    df = pd.read_csv("gs://national-park-reviews-cse-6242/parks_03132025.csv")[['Park Code']].rename(columns={'Park Code': 'Code'})
-    df['ReviewScore'] = 0.7
-    return df
+def calculate_prompt_review_similarity_scores(prompt: str, client):
+    """ Given a prompt, calculate the prompt's similarity to the Google reviews and return the score for each park as a dataframe. """
+    google_reviews = read_all_google_reviews(client)
+    return compute_query_similarity(prompt, google_reviews)
 
-def calculate_prompt_wikipedia_similarity_scores(prompt: str):
+
+def calculate_prompt_wikipedia_similarity_scores(prompt: str, client):
     """ Given a prompt, calculate the prompt's similarity to the Wikipedia pages and return the score for each park as a dataframe. """
-    # Temporary dummy data to get the higher-level functions working
-    df = pd.read_csv("gs://national-park-reviews-cse-6242/parks_03132025.csv")[['Park Code']].rename(columns={'Park Code': 'Code'})
-    df['WikiScore'] = 0.7
-    return df
+    wiki_pages = read_all_wiki_pages(client)
+    return compute_query_similarity(prompt, wiki_pages)
 
 
 def get_traffic_score(month, crowd_preference):
@@ -258,9 +254,3 @@ def get_proximities(park_code: str):
   final_df = sorted_distances.drop(0, axis=0)
   
   return final_df # Returns dataframe of shape 61,2
-
-if __name__ == '__main__':
-    client = Client()
-    recommendations = recommend_parks('Test', 7, 1, 'Houston, Texas - United States', 10)
-    print(recommendations)
-
