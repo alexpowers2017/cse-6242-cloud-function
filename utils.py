@@ -17,8 +17,8 @@ def recommend_parks(prompt: str, month: int, crowd_preference: Union[int,str], c
     # Make sure we're authenticated with Google cloud storage
     client = Client()
 
-    wikipedia_df = calculate_prompt_wikipedia_similarity_scores('test', client)
-    reviews_df = calculate_prompt_review_similarity_scores('test', client)
+    wikipedia_df = calculate_prompt_wikipedia_similarity_scores(prompt, client)
+    reviews_df = calculate_prompt_review_similarity_scores(prompt, client)
     crowd_df = get_traffic_score(month=month, crowd_preference=crowd_preference)
     counts_df = load_and_assign_google_weights()
     ignore_crowd = crowd_preference == 'null'
